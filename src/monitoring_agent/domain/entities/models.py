@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -110,13 +110,160 @@ class CollectorResponse(MonitoringBaseModel):
         return self
 
 
+class HealthSummary(MonitoringBaseModel):
+    """Aggregated health summary for a monitored resource."""
+
+    resource: Resource
+    overall_status: Severity = Field(default=Severity.INFO)
+    score: float = Field(..., ge=0, le=100)
+    summary: str | None = Field(default=None, max_length=1000)
+    components: list["ComponentHealth"] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ComponentHealth(MonitoringBaseModel):
+    """Health state for an individual component within a resource."""
+
+    name: str = Field(..., min_length=1, max_length=128)
+    status: Severity = Field(default=Severity.INFO)
+    score: float = Field(..., ge=0, le=100)
+    message: str | None = Field(default=None, max_length=500)
+
+
+class MetricSnapshot(MonitoringBaseModel):
+    """A point-in-time metric sample captured for evidence gathering."""
+
+    name: str = Field(..., min_length=1, max_length=128)
+    value: float = Field(..., description="Numeric value of the metric")
+    unit: str = Field(default="unknown", min_length=1, max_length=32)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class MetricTrend(MonitoringBaseModel):
+    """Trend information derived from metric history."""
+
+    metric_name: str = Field(..., min_length=1, max_length=128)
+    direction: Literal["up", "down", "stable"] = Field(default="stable")
+    slope: float | None = Field(default=None)
+    baseline: float | None = Field(default=None)
+    current_value: float | None = Field(default=None)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class Anomaly(MonitoringBaseModel):
+    """A detected anomaly that may indicate an incident or reliability issue."""
+
+    metric_name: str = Field(..., min_length=1, max_length=128)
+    severity: Severity = Field(default=Severity.WARNING)
+    message: str = Field(..., min_length=1, max_length=1000)
+    value: float = Field(...)
+    expected_value: float | None = Field(default=None)
+    score: float = Field(..., ge=0, le=100)
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Correlation(MonitoringBaseModel):
+    """Correlation between two metrics or signals."""
+
+    source_metric: str = Field(..., min_length=1, max_length=128)
+    target_metric: str = Field(..., min_length=1, max_length=128)
+    coefficient: float = Field(..., ge=-1, le=1)
+    strength: Literal["weak", "moderate", "strong"] = Field(default="moderate")
+    summary: str | None = Field(default=None, max_length=500)
+
+
+class LogReference(MonitoringBaseModel):
+    """Reference to a log entry that supports an investigation."""
+
+    log_id: str = Field(..., min_length=1, max_length=128)
+    source: str = Field(..., min_length=1, max_length=256)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    level: str = Field(default="info", min_length=1, max_length=32)
+    message: str = Field(..., min_length=1, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TraceReference(MonitoringBaseModel):
+    """Reference to a trace span or distributed trace."""
+
+    trace_id: str = Field(..., min_length=1, max_length=128)
+    span_id: str | None = Field(default=None, min_length=1, max_length=128)
+    service: str = Field(..., min_length=1, max_length=256)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    summary: str | None = Field(default=None, max_length=1000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KubernetesEventReference(MonitoringBaseModel):
+    """Reference to a Kubernetes event relevant to an incident."""
+
+    event_id: str = Field(..., min_length=1, max_length=128)
+    namespace: str = Field(..., min_length=1, max_length=256)
+    kind: str = Field(..., min_length=1, max_length=128)
+    reason: str | None = Field(default=None, max_length=256)
+    message: str = Field(..., min_length=1, max_length=2000)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeploymentEventReference(MonitoringBaseModel):
+    """Reference to a deployment event relevant to observed health changes."""
+
+    deployment_id: str = Field(..., min_length=1, max_length=128)
+    environment: str = Field(..., min_length=1, max_length=128)
+    status: str = Field(..., min_length=1, max_length=64)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    details: str | None = Field(default=None, max_length=1000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SupportingEvidence(MonitoringBaseModel):
+    """A container for supporting evidence references tied to a bundle."""
+
+    evidence_id: str = Field(..., min_length=1, max_length=128)
+    summary: str = Field(..., min_length=1, max_length=1000)
+    logs: list[LogReference] = Field(default_factory=list)
+    traces: list[TraceReference] = Field(default_factory=list)
+    kubernetes_events: list[KubernetesEventReference] = Field(default_factory=list)
+    deployment_events: list[DeploymentEventReference] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceBundle(MonitoringBaseModel):
+    """A structured evidence bundle describing health, metrics, anomalies, and supporting context."""
+
+    bundle_id: str = Field(..., min_length=1, max_length=128)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    resource: Resource
+    health_summary: HealthSummary
+    metric_snapshots: list[MetricSnapshot] = Field(default_factory=list)
+    trends: list[MetricTrend] = Field(default_factory=list)
+    anomalies: list[Anomaly] = Field(default_factory=list)
+    correlations: list[Correlation] = Field(default_factory=list)
+    supporting_evidence: list[SupportingEvidence] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 __all__ = [
+    "Anomaly",
     "CollectorResponse",
     "CollectorStatus",
+    "ComponentHealth",
+    "Correlation",
+    "DeploymentEventReference",
+    "EvidenceBundle",
     "HealthScore",
+    "HealthSummary",
+    "KubernetesEventReference",
+    "LogReference",
     "Metric",
+    "MetricSnapshot",
+    "MetricTrend",
     "Observation",
     "Resource",
     "ResourceType",
     "Severity",
+    "SupportingEvidence",
+    "TraceReference",
 ]
