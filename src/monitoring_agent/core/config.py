@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Structured logging level")
     host: str = Field(default="0.0.0.0", description="Host interface")
     port: int = Field(default=8000, description="Application port")
+    ai_collector_sampling_rate: float = Field(default=1.0, ge=0.0, le=1.0, description="Sampling rate for AI telemetry collection")
+    capture_prompts: bool = Field(default=False, description="Whether to capture prompt content from AI telemetry")
+    capture_responses: bool = Field(default=False, description="Whether to capture response content from AI telemetry")
+    capture_document_content: bool = Field(default=False, description="Whether to capture document content from AI telemetry")
 
 
 settings = Settings()
